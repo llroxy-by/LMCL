@@ -15,6 +15,8 @@ contextBridge.exposeInMainWorld('lmcl', {
   discoverJava: invoke('java:discover'), chooseJava: invoke('java:choose'), saveMemory: invoke('memory:save'),
   versions: invoke('versions:list'), install: invoke('game:install'), cancel: invoke('game:cancel'),
   importGame: invoke('game:import'), openGameFolder: invoke('game:folder'), launch: invoke('game:launch'),
-  openData: invoke('data:folder'), openBedrock: invoke('bedrock:open'),
+  openData: invoke('data:folder'), exportServerPack: invoke('pack:export'), installServerPack: invoke('server:install'), openBedrock: invoke('bedrock:open'),
+  registerMango: invoke('mango:register'), verifyMango: invoke('mango:verify'), loginMango: invoke('mango:login'),
+  logoutMango: invoke('mango:logout'), mangoStatus: invoke('mango:status'), mangoSaves: invoke('mango:saves'),
   onState: listen('state'), onProgress: listen('progress'),
 });

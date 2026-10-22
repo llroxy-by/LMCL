@@ -1,0 +1,9 @@
+{
+  "name": "@lmcl/mango-network",
+  "version": "0.1.0",
+  "private": true,
+  "type": "module",
+  "description": "Dependency-free, in-memory Mango Network backend skeleton",
+  "engines": { "node": ">=22" },
+  "scripts": { "test": "node --test test/*.test.mjs" }
+}

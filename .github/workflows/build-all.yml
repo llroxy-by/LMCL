@@ -1,0 +1,128 @@
+name: Build All Platforms
+
+on:
+  workflow_dispatch:
+    inputs:
+      mango_edition:
+        description: 'Build Mango Network official edition (with default cloud api)'
+        required: false
+        type: boolean
+        default: true
+  push:
+    tags:
+      - 'v*'
+
+permissions:
+  contents: write
+
+jobs:
+  build:
+    name: Build on ${{ matrix.os }} (${{ matrix.target_name }})
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - os: windows-latest
+            target_name: windows
+            build_cmd: npm run build:win
+          - os: ubuntu-latest
+            target_name: linux
+            build_cmd: npm run build:linux
+          - os: macos-latest
+            target_name: macos
+            build_cmd: npm run build:mac
+
+    runs-on: ${{ matrix.os }}
+    timeout-minutes: 40
+
+    steps:
+      - name: Checkout code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+
+      - name: Install dependencies
+        run: npm ci
+
+      - name: Run test suite
+        run: npm test
+
+      - name: Set edition environment
+        shell: bash
+        run: |
+          if [ "${{ github.event.inputs.mango_edition }}" = "true" ] || [ "${{ startsWith(github.ref, 'refs/tags/') }}" = "true" ]; then
+            echo "MANGO_DEFAULT_API=https://api.mangomc.top/mango/" >> $GITHUB_ENV
+            echo "Building Mango Network Edition"
+          else
+            echo "Building Community Edition"
+          fi
+
+      - name: Build Application
+        run: ${{ matrix.build_cmd }}
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+
+      - name: Generate Checksums (Unix)
+        if: runner.os != 'Windows'
+        shell: bash
+        run: |
+          cd release
+          for f in *.{AppImage,tar.gz,dmg,zip}; do
+            [ -f "$f" ] && sha256sum "$f" >> SHA256SUMS.txt || true
+          done
+
+      - name: Generate Checksums (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          Get-ChildItem release/*.exe | ForEach-Object {
+            "$((Get-FileHash $_.FullName -Algorithm SHA256).Hash.ToLower())  $($_.Name)"
+          } | Set-Content release/SHA256SUMS.txt
+
+      - name: Upload Artifacts
+        uses: actions/upload-artifact@v4
+        with:
+          name: LMCL-${{ matrix.target_name }}
+          path: |
+            release/*.exe
+            release/*.AppImage
+            release/*.tar.gz
+            release/*.dmg
+            release/*.zip
+            release/SHA256SUMS.txt
+          if-no-files-found: warn
+
+  release:
+    name: Create GitHub Release
+    needs: build
+    if: ${{ !cancelled() && !contains(needs.*.result, 'failure') }}
+    runs-on: ubuntu-latest
+    steps:
+      - name: Download all artifacts
+        uses: actions/download-artifact@v4
+        with:
+          path: all-releases
+
+      - name: Flatten release directory
+        shell: bash
+        run: |
+          mkdir -p dist
+          # 将所有产物集中到 dist 目录 (排除旧的单项 SHA256 文件)
+          find all-releases -type f ! -name "*SHA256SUMS*" -exec cp {} dist/ \;
+          # 合并全部校验和
+          cat all-releases/*/*SHA256SUMS* > dist/SHA256SUMS.txt 2>/dev/null || true
+          ls -la dist
+
+      - name: Publish Release
+        uses: softprops/action-gh-release@v2
+        with:
+          tag_name: v0.2.0-mango
+          name: "LMCL v0.2.0 (Mango Network Edition)"
+          files: dist/*
+          draft: false
+          prerelease: false
+          generate_release_notes: true

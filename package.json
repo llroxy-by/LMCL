@@ -6,22 +6,91 @@
   "main": "app/main.mjs",
   "private": true,
   "type": "module",
-  "engines": { "node": ">=22" },
+  "engines": {
+    "node": ">=22"
+  },
   "scripts": {
     "start": "electron .",
     "test": "node --test core/test/*.test.mjs app/test/*.test.mjs",
     "smoke": "electron . --smoke-test",
-    "build:win": "electron-builder --win portable --x64 --publish never"
+    "build:win": "electron-builder --win portable --x64 --publish never",
+    "build:linux": "electron-builder --linux AppImage tar.gz --x64 --publish never",
+    "build:mac": "electron-builder --mac dmg zip --x64 --arm64 --publish never",
+    "build:all": "electron-builder -mwl --publish never"
   },
-  "dependencies": { "yauzl": "3.4.0" },
-  "devDependencies": { "electron": "45.0.0", "electron-builder": "26.15.3" },
+  "dependencies": {
+    "yauzl": "3.4.0"
+  },
+  "devDependencies": {
+    "electron": "45.0.0",
+    "electron-builder": "26.15.3"
+  },
   "build": {
     "appId": "io.github.llroxy-by.lmcl",
     "productName": "LMCL",
     "asar": true,
-    "directories": { "output": "release" },
-    "files": ["app/**", "core/src/**", "examples/**", "package.json", "!app/test/**"],
-    "win": { "target": [{ "target": "portable", "arch": ["x64"] }], "signAndEditExecutable": false },
-    "portable": { "artifactName": "LMCL-${version}-windows-x64.exe" }
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "app/**",
+      "core/src/**",
+      "examples/**",
+      "package.json",
+      "!app/test/**"
+    ],
+    "win": {
+      "target": [
+        {
+          "target": "portable",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "signAndEditExecutable": false
+    },
+    "portable": {
+      "artifactName": "LMCL-${version}-windows-x64.exe"
+    },
+    "linux": {
+      "target": [
+        {
+          "target": "AppImage",
+          "arch": [
+            "x64"
+          ]
+        },
+        {
+          "target": "tar.gz",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "category": "Game",
+      "artifactName": "LMCL-${version}-linux-${arch}.${ext}"
+    },
+    "mac": {
+      "target": [
+        {
+          "target": "dmg",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        },
+        {
+          "target": "zip",
+          "arch": [
+            "x64",
+            "arm64"
+          ]
+        }
+      ],
+      "category": "public.app-category.games",
+      "artifactName": "LMCL-${version}-mac-${arch}.${ext}",
+      "identity": null
+    }
   }
 }

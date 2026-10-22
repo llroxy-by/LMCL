@@ -64,7 +64,7 @@ export function expandArguments(entries, values, platform = process.platform, ar
   return out;
 }
 
-export function launchArguments(metadata, { root, profile, memoryMB = 4096, platform = process.platform, arch = process.arch }) {
+export function launchArguments(metadata, { root, profile, memoryMB = 4096, platform = process.platform, arch = process.arch, server }) {
   if (metadata.inheritsFrom) throw new Error('这版暂不支持导入的加载器继承配置，请先使用原版实例');
   if (!Number.isInteger(memoryMB) || memoryMB < 1024 || memoryMB > 32768) throw new Error('内存范围为 1024–32768 MB');
   if (!metadata.arguments || !metadata.mainClass) throw new Error('当前仅支持 1.13 及更新版本的标准原版配置');
@@ -87,6 +87,17 @@ export function launchArguments(metadata, { root, profile, memoryMB = 4096, plat
     const loggingPath = inside(root, `assets/log_configs/${metadata.logging.client.file.id}`);
     args.push(metadata.logging.client.argument.replace('${path}', loggingPath));
   }
-  args.push(metadata.mainClass, ...expandArguments(metadata.arguments.game, values, platform, arch));
+  const gameArgs = expandArguments(metadata.arguments.game, values, platform, arch);
+  if (server) {
+    if (typeof server.host !== 'string' || !server.host.trim() || /[<>:"/\\|?*\s]/u.test(server.host)) {
+      throw new TypeError('无效的服务器直连 host');
+    }
+    const p = Number(server.port ?? 25565);
+    if (!Number.isSafeInteger(p) || p < 1 || p > 65535) {
+      throw new TypeError('无效的服务器直连 port');
+    }
+    gameArgs.push('--server', server.host.trim(), '--port', String(p));
+  }
+  args.push(metadata.mainClass, ...gameArgs);
   return args;
 }
