@@ -3,7 +3,8 @@ import { open, mkdir, rename, rm } from 'node:fs/promises';
 import path from 'node:path';
 import { FIRST_BYTE_TIMEOUT_MS, LAST_RESORT_FIRST_BYTE_MS, SLOW_WINDOW_MS, tooSlow } from '../../core/src/download-source.mjs';
 
-export const USER_AGENT = 'LMCL/0.1.0-preview.2 (github.com/llroxy-by/LMCL)';
+// 不写死版本号：发版后 UA 不会和 package.json 对不上。
+export const USER_AGENT = 'LMCL (github.com/llroxy-by/LMCL)';
 
 // 只有网络层错误值得重试；校验失败、大小不符说明文件本身有问题，重试没意义。
 const NETWORK = /fetch failed|socket|ECONN|ETIMEDOUT|EAI_AGAIN|ENOTFOUND|ECONNRESET|EPIPE/i;
