@@ -67,6 +67,34 @@ test('unsupported inheritance, missing placeholders and unsafe filesystem paths 
   assert.throws(() => launchArguments(metadata, { root: '.', profile: createOfflineProfile('Player'), memoryMB: 1 }));
 });
 
+test('Apple Silicon uses only ARM native artifacts and keeps the first-thread JVM flag', () => {
+  const libraries = ['', '-arm64'].map(suffix => ({
+    name: `org.lwjgl:lwjgl:3.3.1:natives-macos${suffix}`,
+    rules: [{ action: 'allow', os: { name: 'osx' } }],
+    downloads: { artifact: { ...artifact, path: `org/lwjgl/lwjgl-3.3.1-natives-macos${suffix}.jar` } },
+  }));
+  const mac = { ...metadata, libraries,
+    arguments: { ...metadata.arguments, jvm: [...metadata.arguments.jvm,
+      { rules: [{ action: 'allow', os: { name: 'osx' } }], value: '-XstartOnFirstThread' }] } };
+  const plan = libraryPlan(mac, 'darwin', 'arm64');
+  assert.equal(plan.natives.length, 1);
+  assert.match(plan.natives[0].path, /macos-arm64/);
+  const args = launchArguments(mac, { root: '/fixture/game', profile: createOfflineProfile('LMCL_Test'), platform: 'darwin', arch: 'arm64' });
+  assert.ok(args.includes('-XstartOnFirstThread'));
+  assert.match(args[args.indexOf('-cp') + 1], /\.jar:/);
+  assert.equal(allowed([{ action: 'allow', os: { arch: '^aarch64$' } }], 'darwin', 'arm64'), true);
+  assert.throws(() => libraryPlan({ libraries: libraries.slice(0, 1) }, 'darwin', 'arm64'), /M 系列原生库/);
+});
+
+test('Apple Silicon never falls back to legacy Intel-only classifiers', () => {
+  const legacy = { name: 'org.example:native:1', natives: { osx: 'natives-osx' },
+    downloads: { classifiers: { 'natives-osx': native } } };
+  assert.throws(() => libraryPlan({ libraries: [legacy] }, 'darwin', 'arm64'), /M 系列原生库/);
+  const arm = { ...native, path: 'org/example/native/1/native-macos-arm64.jar' };
+  legacy.downloads.classifiers['natives-macos-arm64'] = arm;
+  assert.deepEqual(libraryPlan({ libraries: [legacy] }, 'darwin', 'arm64').natives, [arm]);
+});
+
 test('only official HTTPS domains are accepted for game file downloads', () => {
   assert.equal(officialURL('https://libraries.minecraft.net/a.jar'), 'https://libraries.minecraft.net/a.jar');
   for (const url of ['http://libraries.minecraft.net/a', 'https://libraries.minecraft.net.evil.org/a',

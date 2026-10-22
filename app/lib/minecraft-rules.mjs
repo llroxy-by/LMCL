@@ -15,7 +15,7 @@ export function allowed(rules, platform = process.platform, arch = process.arch,
   for (const rule of rules) {
     const target = rule.os;
     if (target?.name && target.name !== minecraftOS(platform)) continue;
-    const javaArch = arch === 'x64' ? 'x86_64' : arch === 'ia32' ? 'x86' : arch;
+    const javaArch = ({ x64: 'x86_64', ia32: 'x86', arm64: 'aarch64' })[arch] ?? arch;
     if (target?.arch && !new RegExp(target.arch).test(javaArch)) continue;
     if (target?.version && !new RegExp(target.version).test(os.release())) continue;
     if (Object.entries(rule.features ?? {}).some(([key, value]) => (features[key] ?? false) !== value)) continue;
@@ -26,24 +26,38 @@ export function allowed(rules, platform = process.platform, arch = process.arch,
 
 export function libraryPlan(metadata, platform = process.platform, arch = process.arch) {
   const artifacts = [], natives = [];
+  const macNativeRequirements = new Set(), macArmNatives = new Set();
   for (const library of metadata.libraries ?? []) {
     if (!allowed(library.rules, platform, arch)) continue;
     const classifiedNative = library.name?.split(':')[3]?.match(/^natives-(windows|linux|macos|osx)(?:-(arm64|aarch64|arm32|x86|x86_64))?$/);
     if (classifiedNative) {
       const nativeOS = classifiedNative[1] === 'macos' ? 'osx' : classifiedNative[1];
       const nativeArch = ({ arm64: 'arm64', aarch64: 'arm64', arm32: 'arm', x86: 'ia32', x86_64: 'x64' })[classifiedNative[2]] ?? 'x64';
+      if (platform === 'darwin' && arch === 'arm64' && nativeOS === 'osx') {
+        const key = library.name.split(':').slice(0, 3).join(':');
+        macNativeRequirements.add(key);
+        if (nativeArch === 'arm64' && library.downloads?.artifact) macArmNatives.add(key);
+      }
       if (nativeOS !== minecraftOS(platform) || nativeArch !== arch) continue;
     }
     if (library.downloads?.artifact) {
       artifacts.push(library.downloads.artifact);
       if (classifiedNative) natives.push(library.downloads.artifact);
     }
-    const classifier = library.natives?.[minecraftOS(platform)]?.replace('${arch}', arch === 'ia32' ? '32' : '64');
+    let classifier = library.natives?.[minecraftOS(platform)]?.replace('${arch}', arch === 'ia32' ? '32' : '64');
     if (classifier) {
+      if (platform === 'darwin' && arch === 'arm64') {
+        classifier = [`${classifier}-arm64`, 'natives-macos-arm64', 'natives-osx-arm64']
+          .find(key => library.downloads?.classifiers?.[key]);
+        if (!classifier) throw new Error(`此版本缺少 M 系列原生库：${library.name}。请使用支持 Apple Silicon 的版本（如 1.20.1）`);
+      }
       const native = library.downloads?.classifiers?.[classifier];
       if (!native) throw new Error(`缺少当前系统的原生库：${library.name}`);
       natives.push(native);
     }
+  }
+  for (const key of macNativeRequirements) {
+    if (!macArmNatives.has(key)) throw new Error(`此版本缺少 M 系列原生库：${key}。请使用支持 Apple Silicon 的版本（如 1.20.1）`);
   }
   return { artifacts, natives };
 }
@@ -76,7 +90,7 @@ export function launchArguments(metadata, { root, profile, memoryMB = 4096, plat
     auth_player_name: profile.name, auth_uuid: profile.uuid.replaceAll('-', ''), auth_access_token: '0',
     user_type: 'legacy', user_properties: '{}', version_name: metadata.id, version_type: metadata.type ?? 'release',
     game_directory: root, assets_root: path.join(root, 'assets'), assets_index_name: metadata.assetIndex?.id ?? metadata.assets,
-    natives_directory: path.join(root, 'natives'), launcher_name: 'LMCL', launcher_version: '0.1.0-preview.2',
+    natives_directory: path.join(root, 'natives'), launcher_name: 'LMCL', launcher_version: '0.1.0-preview.3',
     classpath, classpath_separator: separator, library_directory: path.join(root, 'libraries'),
     auth_xuid: '', clientid: '',
   };

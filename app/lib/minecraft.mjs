@@ -52,6 +52,7 @@ export async function installVanilla({ version, name, gamesRoot, signal, onProgr
     if (!selected) throw new Error('未找到支持的原版版本，请刷新版本列表');
     const metadata = await getJSON(selected.url, { signal, official: true, sha1: selected.sha1 });
     if (metadata.id !== version || !metadata.arguments || !metadata.downloads?.client) throw new Error('暂不支持该版本');
+    const { artifacts, natives } = libraryPlan(metadata);
     const metadataPath = inside(stage, `versions/${version}/${version}.json`);
     await mkdir(path.dirname(metadataPath), { recursive: true });
     await writeFile(metadataPath, JSON.stringify(metadata));
@@ -61,7 +62,6 @@ export async function installVanilla({ version, name, gamesRoot, signal, onProgr
     await mkdir(path.dirname(assetIndex), { recursive: true });
     await writeFile(assetIndex, JSON.stringify(assets));
     const files = [{ ...metadata.downloads.client, destination: inside(stage, `versions/${version}/${version}.jar`) }];
-    const { artifacts, natives } = libraryPlan(metadata);
     for (const library of [...artifacts, ...natives]) files.push({ ...library, destination: inside(stage, `libraries/${library.path}`) });
     if (metadata.logging?.client?.file) {
       const file = metadata.logging.client.file;

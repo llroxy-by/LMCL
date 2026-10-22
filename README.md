@@ -1,6 +1,6 @@
 # LMCL
 
-一个正在开发的通用 Minecraft Java 启动器，先做 Windows
+一个正在开发的通用 Minecraft Java 启动器，支持 Windows 和 M 系列 Mac
 
 日常可以用来管理游戏版本、模组和整合包，玩单人存档也不需要接入任何服务器。
 
@@ -13,15 +13,15 @@
 - 普通模式独立使用整合包，服务器模式接入服务器列表、在线人数和整合包同步
 - 工具箱里打开已安装的基岩版
 
-目前先保留现有 UI 风格，后续按反馈调整。窗口默认 960×660，可缩小到 820×560。后续考虑 macOS、Linux，Android 先研究可行性
+目前先保留现有 UI 风格，后续按反馈调整。窗口默认 960×660，可缩小到 820×560。Mac 版仅适配 Apple Silicon，最低 macOS 13；后续考虑 Linux，Android 先研究可行性
 
-公开版本不附带 LID 的服务器地址、整合包、素材或访问凭据。其他服务器可以实现同一套[接入接口](docs/server-api.md)，由用户自行添加。普通／服务器模式的切换入口会在 UI 设计时确定，切换模式不会更换账户或删除已有实例。
+公开版本不附带 LID 的服务器地址、整合包、素材或访问凭据。其他服务器可以实现同一套[接入接口](docs/server-api.md)，由用户自行添加。右上角可以切换普通／服务器模式，切换模式不会更换账户或删除已有实例。
 
 ## 目前进度
 
-目前是 Windows x64 功能预览版。下载见 [Releases](https://github.com/llroxy-by/LMCL/releases)，每次 Windows 构建也会保留 EXE 和测试截图。
+目前提供 Windows x64 和 macOS ARM64 功能预览版。下载见 [Releases](https://github.com/llroxy-by/LMCL/releases)，构建会保留安装包和测试截图。
 
-已接入原版游戏下载、文件校验、离线角色、Java 检测、标准原版目录导入与启动。Java 需要自行安装，启动时检查主版本是否符合游戏要求。普通／服务器模式可以切换，服务器接口支持保存与目录查询，默认没有预设服务器。
+已接入原版游戏下载、文件校验、离线角色、Java 检测、标准原版目录导入与启动。Java 需要自行安装，启动时检查主版本是否符合游戏要求。M 系列 Mac 需要 ARM64 / AArch64 版 Java。普通／服务器模式可以切换，服务器接口支持保存与目录查询，默认没有预设服务器。
 
 微软与 LittleSkin 登录、加载器、模组与整合包下载，以及自动更新执行器还没完成。整合包更新计划器已有独立测试，尚未接入写盘。当前桌面端使用 Electron，正式界面和应用图标都还没定稿。
 
@@ -32,11 +32,13 @@ npm ci
 npm start
 ```
 
-在 Windows 上执行 `npm run build:win`，生成免安装的 x64 EXE。构建配置见 `.github/workflows/windows.yml`，使用方法见 [docs/preview.md](docs/preview.md)。
+在 Windows 上执行 `npm run build:win`，生成免安装的 x64 EXE。在 M 系列 Mac 上执行 `npm run build:mac`，生成 ARM64 DMG 和 ZIP。
+
+构建配置见 `.github/workflows/windows.yml` 和 `.github/workflows/macos.yml`，使用方法见 [docs/preview.md](docs/preview.md)。
 
 ## 跑测试
 
-开发需要 Node.js 22 或更新版本；运行 EXE 无需额外安装 Node.js。
+开发需要 Node.js 22 或更新版本；运行启动器无需额外安装 Node.js。
 
 ```sh
 npm test

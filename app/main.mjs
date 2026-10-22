@@ -34,7 +34,7 @@ function persist() {
   return saveQueue;
 }
 function snapshot() {
-  return { ...structuredClone(state), version: app.getVersion(), platform: process.platform,
+  return { ...structuredClone(state), version: app.getVersion(), platform: process.platform, arch: process.arch,
     dataRoot, running: [...running.keys()], busy: Boolean(task), java: javaCache ?? [] };
 }
 function notify() { if (window && !window.isDestroyed()) window.webContents.send('state', snapshot()); }
@@ -141,7 +141,7 @@ function registerHandlers() {
     javaCache = available;
     const required = metadata.javaVersion?.majorVersion ?? entry.javaMajor;
     const java = available.find(item => item.major === required);
-    if (!java) throw new Error(`这个版本需要 Java ${required}，请在设置页选择对应的 Java`);
+    if (!java) throw new Error(`这个版本需要 Java ${required}${process.platform === 'darwin' ? '（ARM64 / AArch64）' : ''}，请安装后在设置页检测或选择`);
     const args = launchArguments(metadata, { root: entry.root, profile: createOfflineProfile(state.profile.name), memoryMB: state.memoryMB });
     const log = await open(path.join(entry.root, 'lmcl-game.log'), 'w');
     try {
@@ -209,7 +209,9 @@ async function smokeTest() {
         }
       }
     }
-    await writeFile(path.join(output, 'smoke.json'), JSON.stringify({ ok: true, platform: process.platform, version: app.getVersion(), ...result, layouts }, null, 2));
+    const java = await discoverJava();
+    if (process.platform === 'darwin' && java.some(item => item.arch !== 'arm64')) throw new Error('Non-ARM Java discovered on Mac');
+    await writeFile(path.join(output, 'smoke.json'), JSON.stringify({ ok: true, platform: process.platform, arch: process.arch, version: app.getVersion(), java, ...result, layouts }, null, 2));
     clearTimeout(timer); app.exit(0);
   } catch (error) {
     await writeFile(path.join(output, 'smoke-error.txt'), error.stack || String(error));

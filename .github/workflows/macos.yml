@@ -1,0 +1,54 @@
+name: macOS Apple Silicon
+
+on:
+  workflow_dispatch:
+  push:
+    branches: [main]
+    paths: ['app/**', 'core/src/**', 'examples/**', 'package*.json', '.github/workflows/macos.yml']
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    runs-on: macos-15
+    timeout-minutes: 25
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-node@v4
+        with:
+          node-version: '22'
+          cache: npm
+      - name: Check build architecture
+        run: test "$(uname -m)" = arm64
+      - run: npm ci
+      - run: npm test
+      - run: npm run smoke
+      - run: npm run build:mac
+        env:
+          CSC_IDENTITY_AUTO_DISCOVERY: 'false'
+      - name: Test packaged application
+        run: |
+          test "$(lipo -archs release/mac-arm64/LMCL.app/Contents/MacOS/LMCL)" = arm64
+          codesign --verify --deep --strict release/mac-arm64/LMCL.app
+          LMCL_SMOKE_OUT="$PWD/work/smoke-packaged" release/mac-arm64/LMCL.app/Contents/MacOS/LMCL --smoke-test
+      - name: Checksums
+        run: |
+          cd release
+          shasum -a 256 *.dmg *.zip > SHA256SUMS-mac-arm64.txt
+      - uses: actions/upload-artifact@v4
+        with:
+          name: LMCL-mac-arm64
+          path: |
+            release/*.dmg
+            release/*.zip
+            release/SHA256SUMS-mac-arm64.txt
+            work/smoke-packaged/*
+          if-no-files-found: error
+      - uses: actions/upload-artifact@v4
+        if: failure()
+        with:
+          name: LMCL-mac-diagnostics
+          path: |
+            smoke-output/**
+            work/smoke-packaged/**
