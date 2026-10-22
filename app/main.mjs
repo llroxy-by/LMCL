@@ -8,6 +8,10 @@ import { realpathSync } from 'node:fs';
 import { createOfflineProfile } from '../core/src/accounts.mjs';
 import { launcherSettings, switchLauncherMode, serverProvider } from '../core/src/server-mode.mjs';
 import { versionCatalog, installVanilla, importDirectory, readMetadata } from './lib/minecraft.mjs';
+import { searchContent, projectVersions, projectVersion } from './lib/modrinth.mjs';
+import { installContentFile, downloadModpack, importContent, importFromLink } from './lib/content-install.mjs';
+import { normalizeDownloadMode } from '../core/src/download-source.mjs';
+import { contentKind, hasCatalogue, installsAsInstance } from '../core/src/content.mjs';
 import { launchArguments } from './lib/minecraft-rules.mjs';
 import { discoverJava, inspectJava } from './lib/java.mjs';
 import { getJSON } from './lib/network.mjs';
@@ -19,6 +23,8 @@ if (smoke) app.disableHardwareAcceleration();
 let window, state, stateFile, dataRoot, task, javaCache;
 const running = new Map();
 const launching = new Set();
+// 镜像失败后的短期冷却，避免每次下载都先撞一次墙。
+const sourceHealth = new Map();
 let saveQueue = Promise.resolve();
 app.setName('LMCL');
 app.setAppUserModelId('io.github.llroxy-by.lmcl');
@@ -155,6 +161,69 @@ function registerHandlers() {
     finally { await log.close(); }
     } finally { launching.delete(id); }
   });
+  register('content:search', async input => {
+    const kind = contentKind(input?.kind);
+    if (!hasCatalogue(kind)) throw new Error('这个分类没有可浏览的公共目录，请用链接或本地文件导入');
+    return searchContent({ kind, query: input?.query, gameVersion: input?.gameVersion,
+      loader: input?.loader, offset: input?.offset, limit: input?.limit });
+  });
+  register('content:versions', async input => {
+    const kind = contentKind(input?.kind);
+    if (!hasCatalogue(kind)) throw new Error('这个分类没有可浏览的公共目录');
+    return projectVersions({ projectId: input?.projectId, kind,
+      gameVersion: input?.gameVersion, loader: input?.loader });
+  });
+  // 下载任务串行执行：同一时刻只允许一个下载，避免进度条互相覆盖。
+  register('content:install', async input => {
+    if (task) throw new Error('请等待当前下载结束，或先取消下载');
+    const kind = contentKind(input?.kind);
+    if (installsAsInstance(kind)) throw new Error('整合包请用整合包下载');
+    const entry = instance(input?.instanceId);
+    task = new AbortController(); notify();
+    try {
+      const file = await projectVersion({ projectId: input?.projectId, versionId: input?.versionId, kind });
+      return await installContentFile({ kind, instanceRoot: entry.root, file,
+        mode: state.downloadMode, mirrorBase: state.contentMirror, health: sourceHealth,
+        signal: task.signal, onProgress: progress });
+    } finally { task = null; progress(null); notify(); }
+  });
+  register('content:modpack', async input => {
+    if (task) throw new Error('请等待当前下载结束，或先取消下载');
+    if (contentKind(input?.kind) !== 'modpack') throw new Error('仅适用于整合包');
+    task = new AbortController(); notify();
+    try {
+      const file = await projectVersion({ projectId: input?.projectId, versionId: input?.versionId, kind: 'modpack' });
+      return await downloadModpack({ dataRoot, file, mode: state.downloadMode, mirrorBase: state.contentMirror,
+        health: sourceHealth, signal: task.signal, onProgress: progress });
+    } finally { task = null; progress(null); notify(); }
+  });
+  register('content:import', async input => {
+    if (task) throw new Error('请等待当前下载结束，或先取消下载');
+    const kind = contentKind(input?.kind);
+    const filters = { mod: ['jar'], modpack: ['mrpack', 'zip'], resourcepack: ['zip'], shader: ['zip'], schematic: ['litematic', 'schem', 'nbt'] }[kind];
+    const picked = await dialog.showOpenDialog(window, { title: '选择要导入的文件', properties: ['openFile'],
+      filters: [{ name: kind, extensions: filters }] });
+    if (picked.canceled) return null;
+    return importContent({ kind, sourcePath: picked.filePaths[0],
+      instanceRoot: installsAsInstance(kind) ? '' : instance(input?.instanceId).root, dataRoot });
+  });
+  register('content:link', async input => {
+    if (task) throw new Error('请等待当前下载结束，或先取消下载');
+    const kind = contentKind(input?.kind);
+    const entry = instance(input?.instanceId);
+    task = new AbortController(); notify();
+    try {
+      return await importFromLink({ kind, instanceRoot: entry.root, url: input?.url,
+        fileName: input?.fileName, signal: task.signal, onProgress: progress });
+    } finally { task = null; progress(null); notify(); }
+  });
+  register('download:save', async input => {
+    const mode = normalizeDownloadMode(input?.mode);
+    const mirror = typeof input?.contentMirror === 'string' ? input.contentMirror.trim() : '';
+    if (mirror && !/^https:\/\/[^\s]+$/.test(mirror)) throw new Error('镜像地址必须是 https 链接');
+    state.downloadMode = mode; state.contentMirror = mirror;
+    await persist(); notify(); return { downloadMode: mode, contentMirror: mirror };
+  });
   register('data:folder', async () => { const result = await shell.openPath(dataRoot); if (result) throw new Error(result); });
   register('bedrock:open', async () => {
     if (process.platform !== 'win32') throw new Error('此入口仅适用于 Windows');
@@ -231,10 +300,14 @@ app.whenReady().then(async () => {
   try { state = JSON.parse(await readFile(stateFile, 'utf8')); }
   catch (error) {
     if (error.code !== 'ENOENT') throw new Error('配置文件无法读取，请备份后检查 launcher.json');
-    state = { schemaVersion: 1, settings: launcherSettings(), profile: null, instances: [], javaPath: '', memoryMB: 4096 };
+    state = { schemaVersion: 1, settings: launcherSettings(), profile: null, instances: [], javaPath: '', memoryMB: 4096,
+      downloadMode: 'auto', contentMirror: '' };
   }
   state.settings = launcherSettings(state.settings);
   if (!Array.isArray(state.instances)) throw new Error('实例列表格式无效');
+  // 旧配置没有下载源字段，补默认值；坏值退回自动，避免直接打不开启动器。
+  try { state.downloadMode = normalizeDownloadMode(state.downloadMode); } catch { state.downloadMode = 'auto'; }
+  if (typeof state.contentMirror !== 'string') state.contentMirror = '';
   const area = screen.getPrimaryDisplay().workAreaSize;
   const width = Math.min(960, area.width - 32), height = Math.min(660, area.height - 32);
   window = new BrowserWindow({ width, height, minWidth: Math.min(820, width), minHeight: Math.min(560, height),
